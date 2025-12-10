@@ -11,7 +11,7 @@ static bool     s_proto_ready     = false;
 // Use TGW MAC known a priori; fallback to broadcast if you want auto-discovery.
 static const uint8_t s_tgw_mac[6] = {0xA8, 0x42, 0xE3, 0x4A, 0xA4, 0x24};
 static const uint8_t s_rsn_mac_fixed[6] = {0x24, 0x0A, 0xC4, 0x12, 0x34, 0x57};
-static uint8_t  s_peer_mac[6]     = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+static uint8_t  s_peer_mac[6]     = {0xA8, 0x42, 0xE3, 0x4A, 0xA4, 0x24};
 static uint8_t  s_espnow_channel  = 1;
 static volatile bool s_last_send_ok = false;
 
@@ -123,10 +123,18 @@ static bool proto_send_packet(const void* payload, size_t len) {
     const rsn_header_t* hdr = reinterpret_cast<const rsn_header_t*>(payload);
     memcpy(g_tx_buffer, payload, len);
     s_last_send_ok = false;
-    // For debug, force broadcast to avoid peer add issues until link is stable.
-    const uint8_t* dest = nullptr;
-    Serial.printf("[RSN] TX type=0x%02X len=%u dest=(bcast) chan=%u\n",
-                  hdr ? hdr->type : 0xFF, (unsigned)len, s_espnow_channel);
+    // Always try to send to TGW MAC; if peer add fails, fallback to broadcast.
+    const uint8_t* dest = s_peer_mac;
+    if (!ensure_peer_added()) {
+        dest = nullptr; // broadcast fallback
+        Serial.println("[RSN] peer add failed, sending broadcast");
+    }
+    const bool is_bcast = (dest == nullptr);
+    Serial.printf("[RSN] TX type=0x%02X len=%u dest=%s%02X:%02X:%02X:%02X:%02X:%02X chan=%u\n",
+                  hdr ? hdr->type : 0xFF, (unsigned)len, is_bcast ? "(bcast)" : "",
+                  dest ? dest[0] : 0xFF, dest ? dest[1] : 0xFF, dest ? dest[2] : 0xFF,
+                  dest ? dest[3] : 0xFF, dest ? dest[4] : 0xFF, dest ? dest[5] : 0xFF,
+                  s_espnow_channel);
     esp_err_t err = esp_now_send(dest, g_tx_buffer, len);
     if (err != ESP_OK) {
         Serial.printf("[RSN] esp_now_send failed err=%d\n", (int)err);
