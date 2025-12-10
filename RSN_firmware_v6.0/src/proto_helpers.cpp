@@ -72,6 +72,7 @@ static bool ensure_peer_added() {
 void proto_init() {
     WiFi.mode(WIFI_STA);
     WiFi.disconnect(true);
+    esp_wifi_set_ps(WIFI_PS_NONE);
     esp_wifi_start();
     esp_wifi_set_channel(s_espnow_channel, WIFI_SECOND_CHAN_NONE);
     uint8_t mac[6] = {};
@@ -124,8 +125,8 @@ static bool proto_send_packet(const void* payload, size_t len) {
     s_last_send_ok = false;
     // For debug, force broadcast to avoid peer add issues until link is stable.
     const uint8_t* dest = nullptr;
-    Serial.printf("[RSN] TX type=0x%02X len=%u dest=(bcast)\n",
-                  hdr ? hdr->type : 0xFF, (unsigned)len);
+    Serial.printf("[RSN] TX type=0x%02X len=%u dest=(bcast) chan=%u\n",
+                  hdr ? hdr->type : 0xFF, (unsigned)len, s_espnow_channel);
     esp_err_t err = esp_now_send(dest, g_tx_buffer, len);
     if (err != ESP_OK) {
         Serial.printf("[RSN] esp_now_send failed err=%d\n", (int)err);
