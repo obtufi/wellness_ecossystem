@@ -1,0 +1,13 @@
+# Python cache / env
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local data
+gce_data.sqlite3
+gce_data.sqlite3-*
+*.db
+
+# Logs / dumps
+*.log

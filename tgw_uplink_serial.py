@@ -88,9 +88,13 @@ class TgwUplinkSerial:
                 length = int.from_bytes(header, "little")
                 if length == 0 or length > 4096:
                     # discard suspicious length to avoid desync
+                    if self._log:
+                        self._log.warning("serial-length-invalid", length=length)
                     continue
                 payload = self._read_exact(length)
                 if len(payload) != length:
+                    if self._log:
+                        self._log.warning("serial-short-read", expected=length, got=len(payload))
                     continue
                 self._callback(payload)
             except serial.SerialException as exc:

@@ -24,6 +24,9 @@ from rsn_proto import (
     RsnPacketType,
     RsnTelemetry,
     RsnMode,
+    HELLO_STRUCT,
+    TELEMETRY_STRUCT,
+    CONFIG_ACK_STRUCT,
 )
 
 
@@ -65,28 +68,31 @@ def parse_up_payload(payload: bytes) -> UpFrame:
         raise ValueError("empty payload")
     msg_type = payload[0]
     if msg_type == TgwFrameType.UP_RSN_HELLO:
-        if len(payload) < 3:
-            raise ValueError("hello frame too short")
+        expected = 3 + HELLO_STRUCT.size
+        if len(payload) < expected:
+            raise ValueError(f"hello frame too short: {len(payload)} < {expected}")
         node_id = payload[1]
         rssi = struct.unpack_from("<b", payload, 2)[0]
-        hello = RsnHello.from_bytes(payload[3:])
+        hello = RsnHello.from_bytes(payload[3:3 + HELLO_STRUCT.size])
         return UpHelloFrame(node_id=node_id, rssi=rssi, hello=hello)
 
     if msg_type == TgwFrameType.UP_RSN_TELEMETRY:
-        if len(payload) < 3 + 4:
-            raise ValueError("telemetry frame too short")
+        expected = 3 + 4 + TELEMETRY_STRUCT.size
+        if len(payload) < expected:
+            raise ValueError(f"telemetry frame too short: {len(payload)} < {expected}")
         node_id = payload[1]
         rssi = struct.unpack_from("<b", payload, 2)[0]
         tgw_ts_ms = struct.unpack_from("<I", payload, 3)[0]
-        telemetry = RsnTelemetry.from_bytes(payload[7:])
+        telemetry = RsnTelemetry.from_bytes(payload[7:7 + TELEMETRY_STRUCT.size])
         return UpTelemetryFrame(node_id=node_id, rssi=rssi, tgw_local_ts_ms=tgw_ts_ms, telemetry=telemetry)
 
     if msg_type == TgwFrameType.UP_RSN_CONFIG_ACK:
-        if len(payload) < 3:
-            raise ValueError("config ack frame too short")
+        expected = 3 + CONFIG_ACK_STRUCT.size
+        if len(payload) < expected:
+            raise ValueError(f"config ack frame too short: {len(payload)} < {expected}")
         node_id = payload[1]
         rssi = struct.unpack_from("<b", payload, 2)[0]
-        ack = RsnConfigAck.from_bytes(payload[3:])
+        ack = RsnConfigAck.from_bytes(payload[3:3 + CONFIG_ACK_STRUCT.size])
         return UpConfigAckFrame(node_id=node_id, rssi=rssi, ack=ack)
 
     raise ValueError(f"unknown frame type 0x{msg_type:02X}")

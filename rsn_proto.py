@@ -125,18 +125,33 @@ class RsnConfig:
 
     @classmethod
     def from_dict(cls, node_id: int, cfg: Dict[str, Any], *, hw_version: int = 1, fw_version: int = 1) -> "RsnConfig":
+        def _clamp(name: str, value: int, lo: int, hi: int) -> int:
+            if value < lo or value > hi:
+                raise ValueError(f"{name} out of range [{lo},{hi}]: {value}")
+            return value
+
         header = RsnHeader(RsnPacketType.CONFIG, node_id, RsnMode.RUNNING, hw_version, fw_version)
+        sleep_time_s = _clamp("sleep_time_s", int(cfg.get("sleep_time_s", 300)), 1, 36000)
+        pwr_up_time_ms = _clamp("pwr_up_time_ms", int(cfg.get("pwr_up_time_ms", 100)), 1, 60000)
+        settling_time_ms = _clamp("settling_time_ms", int(cfg.get("settling_time_ms", 150)), 1, 60000)
+        sampling_interval_ms = _clamp("sampling_interval_ms", int(cfg.get("sampling_interval_ms", 50)), 1, 10000)
+        led_mode_default = _clamp("led_mode_default", int(cfg.get("led_mode_default", 0)), 0, 255)
+        batt_bucket = _clamp("batt_bucket", int(cfg.get("batt_bucket", 1)), 0, 2)
+        lost_rx_limit = _clamp("lost_rx_limit", int(cfg.get("lost_rx_limit", 3)), 0, 20)
+        debug_mode = _clamp("debug_mode", int(cfg.get("debug_mode", 0)), 0, 1)
+        reset_flags = _clamp("reset_flags", int(cfg.get("reset_flags", 0)), 0, 0xFF)
+
         return cls(
             header=header,
-            sleep_time_s=int(cfg.get("sleep_time_s", 300)),
-            pwr_up_time_ms=int(cfg.get("pwr_up_time_ms", 100)),
-            settling_time_ms=int(cfg.get("settling_time_ms", 150)),
-            sampling_interval_ms=int(cfg.get("sampling_interval_ms", 50)),
-            led_mode_default=int(cfg.get("led_mode_default", 0)),
-            batt_bucket=int(cfg.get("batt_bucket", 1)),
-            lost_rx_limit=int(cfg.get("lost_rx_limit", 3)),
-            debug_mode=int(cfg.get("debug_mode", 0)),
-            reset_flags=int(cfg.get("reset_flags", 0)),
+            sleep_time_s=sleep_time_s,
+            pwr_up_time_ms=pwr_up_time_ms,
+            settling_time_ms=settling_time_ms,
+            sampling_interval_ms=sampling_interval_ms,
+            led_mode_default=led_mode_default,
+            batt_bucket=batt_bucket,
+            lost_rx_limit=lost_rx_limit,
+            debug_mode=debug_mode,
+            reset_flags=reset_flags,
         )
 
 

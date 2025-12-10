@@ -48,6 +48,15 @@ def main():
         log.error("no-serial-port-found")
         sys.exit(1)
 
+    if args.send_config and args.node_id is None:
+        log.error("missing-node-id-for-config")
+        sys.exit(1)
+    if args.node_id is not None and not args.send_config and not args.send_handshake:
+        log.warning("node-id-provided-without-config", node_id=args.node_id)
+    if args.node_id is not None and (args.node_id < 1 or args.node_id > 255):
+        log.error("node-id-out-of-range", node_id=args.node_id)
+        sys.exit(1)
+
     store = GceStore(args.db, log=log)
     link = TgwUplinkSerial(port, baudrate=args.baud, log=log)
 
@@ -58,10 +67,13 @@ def main():
             log.warning("frame-parse-failed", err=str(exc))
             return
         if isinstance(frame, UpHelloFrame):
+            log.info("hello-received", node_id=frame.node_id, rssi=frame.rssi)
             store.upsert_node(frame.node_id, frame.rssi, frame.hello)
         elif isinstance(frame, UpTelemetryFrame):
+            log.info("telemetry-received", node_id=frame.node_id, rssi=frame.rssi, tgw_ts_ms=frame.tgw_local_ts_ms)
             store.add_telemetry(frame.node_id, frame.rssi, frame.tgw_local_ts_ms, frame.telemetry)
         elif isinstance(frame, UpConfigAckFrame):
+            log.info("config-ack-received", node_id=frame.node_id, rssi=frame.rssi, status=frame.ack.status)
             store.add_config_ack(frame.node_id, frame.rssi, frame.ack)
         else:
             log.warning("unknown-frame", type=type(frame).__name__)
@@ -74,12 +86,29 @@ def main():
             cfg = _load_config(args.send_config, args.node_id)
             if args.send_handshake:
                 payload = build_down_handshake_payload(args.node_id)
-                link.send_payload(payload)
-                log.info("handshake-sent", node_id=args.node_id)
+                try:
+                    link.send_payload(payload)
+                except Exception as exc:
+                    log.error("handshake-send-failed", err=str(exc))
+                else:
+                    log.info("handshake-sent", node_id=args.node_id)
                 time.sleep(0.05)
             payload = build_down_config_payload(args.node_id, cfg)
-            link.send_payload(payload)
-            log.info("config-sent", node_id=args.node_id, cfg=str(args.send_config))
+            try:
+                link.send_payload(payload)
+            except Exception as exc:
+                log.error("config-send-failed", err=str(exc))
+            else:
+                log.info(
+                    "config-sent",
+                    node_id=args.node_id,
+                    cfg=str(args.send_config),
+                    sleep_s=cfg.sleep_time_s,
+                    settle_ms=cfg.settling_time_ms,
+                    sample_ms=cfg.sampling_interval_ms,
+                    lost_rx_limit=cfg.lost_rx_limit,
+                    debug_mode=cfg.debug_mode,
+                )
 
         log.info("listening", port=port, baud=args.baud, db=str(args.db))
         while True:
