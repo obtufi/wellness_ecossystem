@@ -96,8 +96,11 @@ class ConnectionPanel(QWidget):
 
     def _on_connect_clicked(self):
         selected = self._port_combo.currentText()
-        port = self._resolve_port(selected)
         baud = int(self._baud_spin.value())
+        if selected == "auto":
+            self._auto_connect(baud)
+            return
+        port = self._resolve_port(selected)
         if not port:
             self.update_status(False, "Porta não encontrada")
             return
@@ -108,6 +111,19 @@ class ConnectionPanel(QWidget):
     def _on_disconnect_clicked(self):
         self._controller.disconnect_from_tgw()
         self.update_status(False, "Desconectado")
+
+    def _auto_connect(self, baud: int):
+        """Try available ports until one connects successfully."""
+        ports = [p.device for p in list_ports.comports()]
+        if not ports:
+            self.update_status(False, "Nenhuma porta encontrada")
+            return
+        for port in ports:
+            success = self._controller.connect_to_tgw(port, baud)
+            if success:
+                self._port_combo.setCurrentText(port)
+                return
+        self.update_status(False, "Falha ao conectar (auto)")
 
     def _set_buttons_enabled(self, connected: bool):
         """Toggle connect/disconnect buttons according to link state."""
