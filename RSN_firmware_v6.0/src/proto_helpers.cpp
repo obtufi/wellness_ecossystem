@@ -6,8 +6,9 @@
 #include "proto_helpers.h"
 
 static bool     s_proto_ready     = false;
-// Default to broadcast so first HELLO always reaches any TGW; will learn MAC on first RX.
-static uint8_t  s_peer_mac[6]     = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+// Use TGW MAC known a priori; fallback to broadcast if you want auto-discovery.
+static const uint8_t s_tgw_mac[6] = {0xA8, 0x42, 0xE3, 0x4A, 0xA4, 0x24};
+static uint8_t  s_peer_mac[6]     = {0xA8, 0x42, 0xE3, 0x4A, 0xA4, 0x24};
 static volatile bool s_last_send_ok = false;
 
 static bool ensure_peer_added();
@@ -181,8 +182,6 @@ bool proto_handle_handshake_packet(const rsn_handshake_packet_t* pkt) {
 }
 
 bool proto_send_hello() {
-    // Garanta broadcast mesmo se tivermos MAC antigo em cache (pairing/reset).
-    memset(s_peer_mac, 0xFF, sizeof(s_peer_mac));
     rsn_hello_packet_t pkt = {};
     proto_build_hello_packet(&pkt);
     return proto_send_packet(&pkt, sizeof(pkt));
