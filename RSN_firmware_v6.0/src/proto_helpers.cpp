@@ -10,6 +10,7 @@
 static bool     s_proto_ready     = false;
 // Use TGW MAC known a priori; fallback to broadcast if you want auto-discovery.
 static const uint8_t s_tgw_mac[6] = {0xA8, 0x42, 0xE3, 0x4A, 0xA4, 0x24};
+static const uint8_t s_rsn_mac_fixed[6] = {0x24, 0x0A, 0xC4, 0x12, 0x34, 0x57};
 static uint8_t  s_peer_mac[6]     = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 static uint8_t  s_espnow_channel  = 1;
 static volatile bool s_last_send_ok = false;
@@ -71,20 +72,18 @@ static bool ensure_peer_added() {
 void proto_init() {
     WiFi.mode(WIFI_STA);
     WiFi.disconnect(true);
+    esp_wifi_start();
     esp_wifi_set_channel(s_espnow_channel, WIFI_SECOND_CHAN_NONE);
     uint8_t mac[6] = {};
     esp_wifi_get_mac(WIFI_IF_STA, mac);
-    // If MAC invalid (all zero), fallback to base MAC from eFuse.
+    // If MAC invalid (all zero), set fixed RSN MAC to ensure ESP-NOW works.
     bool mac_invalid = true;
     for (int i = 0; i < 6; ++i) {
         if (mac[i] != 0x00) { mac_invalid = false; break; }
     }
     if (mac_invalid) {
-        uint8_t base_mac[6] = {};
-        if (esp_base_mac_addr_get(base_mac) == ESP_OK) {
-            esp_wifi_set_mac(WIFI_IF_STA, base_mac);
-            memcpy(mac, base_mac, 6);
-        }
+        esp_wifi_set_mac(WIFI_IF_STA, s_rsn_mac_fixed);
+        memcpy(mac, s_rsn_mac_fixed, 6);
     }
 
     esp_err_t err = esp_now_init();
