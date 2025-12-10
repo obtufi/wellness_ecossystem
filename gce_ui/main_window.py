@@ -81,6 +81,7 @@ class MainWindow(QMainWindow):
 
     def _wire_signals(self):
         self._nodes_panel.node_selected.connect(self._telemetry_panel.set_node)
+        self._nodes_panel.node_selected.connect(self._on_node_selected)
         self._controller.node_updated.connect(self._handle_node_updated)
         self._controller.telemetry_updated.connect(self._handle_telemetry_updated)
         self._controller.log_message.connect(self._log_panel.append_log)
@@ -91,12 +92,12 @@ class MainWindow(QMainWindow):
         self._nodes_panel.refresh()
         if self._telemetry_panel.current_node_id == node_id:
             self._telemetry_panel.refresh()
+        self._update_config_btn_state()
 
     def _handle_telemetry_updated(self, node_id: int):
         if self._telemetry_panel.current_node_id == node_id:
             self._telemetry_panel.refresh()
         self._nodes_panel.refresh()
-        self._current_node_id = node_id
         self._update_config_btn_state()
 
     def _show_about(self):
@@ -108,6 +109,10 @@ class MainWindow(QMainWindow):
 
     def _update_config_btn_state(self):
         self._config_btn.setEnabled(self._nodes_panel.current_node_id is not None)
+
+    def _on_node_selected(self, node_id: int):
+        self._current_node_id = node_id
+        self._update_config_btn_state()
 
     def _open_config_dialog(self):
         node_id = self._nodes_panel.current_node_id
