@@ -6,10 +6,11 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QMainWindow, QMessageBox, QSplitter, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QPushButton, QMainWindow, QMessageBox, QSplitter, QVBoxLayout, QWidget
 
 from .connection_panel import ConnectionPanel
 from .controllers import GceBackendController
+from .config_panel import ConfigDialog
 from .log_panel import LogPanel
 from .nodes_panel import NodesPanel
 from .telemetry_panel import TelemetryPanel
@@ -27,6 +28,9 @@ class MainWindow(QMainWindow):
         self._nodes_panel = NodesPanel(self._controller)
         self._telemetry_panel = TelemetryPanel(self._controller)
         self._log_panel = LogPanel()
+        self._config_btn = QPushButton("Configurar nó...", self)
+        self._config_btn.setEnabled(False)
+        self._current_node_id = None
 
         self._build_menu()
         self._wire_signals()
@@ -54,7 +58,11 @@ class MainWindow(QMainWindow):
     def _build_layout(self):
         central = QWidget(self)
         layout = QVBoxLayout(central)
-        layout.addWidget(self._connection_panel)
+        top = QHBoxLayout()
+        top.addWidget(self._connection_panel, stretch=1)
+        top.addStretch()
+        top.addWidget(self._config_btn)
+        layout.addLayout(top)
 
         vertical_split = QSplitter(Qt.Vertical, central)
         horizontal_split = QSplitter(Qt.Horizontal, vertical_split)
@@ -77,6 +85,7 @@ class MainWindow(QMainWindow):
         self._controller.telemetry_updated.connect(self._handle_telemetry_updated)
         self._controller.log_message.connect(self._log_panel.append_log)
         self._controller.connection_state_changed.connect(self._connection_panel.update_status)
+        self._config_btn.clicked.connect(self._open_config_dialog)
 
     def _handle_node_updated(self, node_id: int):
         self._nodes_panel.refresh()
@@ -87,6 +96,8 @@ class MainWindow(QMainWindow):
         if self._telemetry_panel.current_node_id == node_id:
             self._telemetry_panel.refresh()
         self._nodes_panel.refresh()
+        self._current_node_id = node_id
+        self._update_config_btn_state()
 
     def _show_about(self):
         QMessageBox.information(
@@ -94,3 +105,14 @@ class MainWindow(QMainWindow):
             "Sobre",
             "GCE Dashboard\nMonitoramento RSN/TGW em PySide6.",
         )
+
+    def _update_config_btn_state(self):
+        self._config_btn.setEnabled(self._nodes_panel.current_node_id is not None)
+
+    def _open_config_dialog(self):
+        node_id = self._nodes_panel.current_node_id
+        if node_id is None:
+            QMessageBox.information(self, "Config", "Selecione um nó primeiro.")
+            return
+        dlg = ConfigDialog(self._controller, node_id, self)
+        dlg.exec()

@@ -23,6 +23,7 @@ class NodesPanel(QWidget):
         self._controller = controller
         self._model = NodesTableModel()
         self._table = QTableView(self)
+        self._current_node: Optional[int] = None
         self._setup_table()
         self._layout_widgets()
 
@@ -54,6 +55,7 @@ class NodesPanel(QWidget):
         row = selected.indexes()[0].row()
         node_id = self._model.node_id_at(row)
         if node_id is not None:
+            self._current_node = node_id
             self.node_selected.emit(node_id)
 
     def _auto_select_first(self):
@@ -65,3 +67,8 @@ class NodesPanel(QWidget):
             return
         first = self._model.index(0, 0)
         sel_model.select(first, QItemSelectionModel.Select | QItemSelectionModel.Rows)
+
+    @property
+    def current_node_id(self) -> Optional[int]:
+        """Currently selected node_id, if any."""
+        return self._current_node
