@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
+#include <esp_system.h>
 #include <string.h>
 
 #include "proto_helpers.h"
@@ -9,7 +10,7 @@
 static bool     s_proto_ready     = false;
 // Use TGW MAC known a priori; fallback to broadcast if you want auto-discovery.
 static const uint8_t s_tgw_mac[6] = {0xA8, 0x42, 0xE3, 0x4A, 0xA4, 0x24};
-static uint8_t  s_peer_mac[6]     = {0xA8, 0x42, 0xE3, 0x4A, 0xA4, 0x24};
+static uint8_t  s_peer_mac[6]     = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 static uint8_t  s_espnow_channel  = 1;
 static volatile bool s_last_send_ok = false;
 
@@ -71,8 +72,20 @@ void proto_init() {
     WiFi.mode(WIFI_STA);
     WiFi.disconnect(true);
     esp_wifi_set_channel(s_espnow_channel, WIFI_SECOND_CHAN_NONE);
-    uint8_t mac[6];
+    uint8_t mac[6] = {};
     esp_wifi_get_mac(WIFI_IF_STA, mac);
+    // If MAC invalid (all zero), fallback to base MAC from eFuse.
+    bool mac_invalid = true;
+    for (int i = 0; i < 6; ++i) {
+        if (mac[i] != 0x00) { mac_invalid = false; break; }
+    }
+    if (mac_invalid) {
+        uint8_t base_mac[6] = {};
+        if (esp_base_mac_addr_get(base_mac) == ESP_OK) {
+            esp_wifi_set_mac(WIFI_IF_STA, base_mac);
+            memcpy(mac, base_mac, 6);
+        }
+    }
 
     esp_err_t err = esp_now_init();
     s_proto_ready = (err == ESP_OK);
@@ -80,11 +93,9 @@ void proto_init() {
         Serial.printf("[RSN] esp_now_init failed err=%d\n", (int)err);
         return;
     }
-    Serial.printf("[RSN] WiFi channel=%u MAC=%02X:%02X:%02X:%02X:%02X:%02X peer=%02X:%02X:%02X:%02X:%02X:%02X\n",
+    Serial.printf("[RSN] WiFi channel=%u MAC=%02X:%02X:%02X:%02X:%02X:%02X (peer bcast)\n",
                   s_espnow_channel,
-                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
-                  s_peer_mac[0], s_peer_mac[1], s_peer_mac[2],
-                  s_peer_mac[3], s_peer_mac[4], s_peer_mac[5]);
+                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
     esp_now_register_send_cb(on_send);
     esp_now_register_recv_cb(on_recv);
@@ -112,14 +123,10 @@ static bool proto_send_packet(const void* payload, size_t len) {
     const rsn_header_t* hdr = reinterpret_cast<const rsn_header_t*>(payload);
     memcpy(g_tx_buffer, payload, len);
     s_last_send_ok = false;
-    ensure_peer_added(); // melhor esforço; se falhar ainda tentamos enviar (broadcast)
-    const bool is_broadcast = (s_peer_mac[0] == 0xFF && s_peer_mac[1] == 0xFF && s_peer_mac[2] == 0xFF &&
-                               s_peer_mac[3] == 0xFF && s_peer_mac[4] == 0xFF && s_peer_mac[5] == 0xFF);
-    const uint8_t* dest = is_broadcast ? nullptr : s_peer_mac;
-    Serial.printf("[RSN] TX type=0x%02X len=%u dest=%s%02X:%02X:%02X:%02X:%02X:%02X\n",
-                  hdr ? hdr->type : 0xFF, (unsigned)len, is_broadcast ? "(bcast)" : "",
-                  dest ? dest[0] : 0xFF, dest ? dest[1] : 0xFF, dest ? dest[2] : 0xFF,
-                  dest ? dest[3] : 0xFF, dest ? dest[4] : 0xFF, dest ? dest[5] : 0xFF);
+    // For debug, force broadcast to avoid peer add issues until link is stable.
+    const uint8_t* dest = nullptr;
+    Serial.printf("[RSN] TX type=0x%02X len=%u dest=(bcast)\n",
+                  hdr ? hdr->type : 0xFF, (unsigned)len);
     esp_err_t err = esp_now_send(dest, g_tx_buffer, len);
     if (err != ESP_OK) {
         Serial.printf("[RSN] esp_now_send failed err=%d\n", (int)err);
