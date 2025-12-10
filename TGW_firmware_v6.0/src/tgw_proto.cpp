@@ -25,6 +25,23 @@ static uint32_t s_last_unset_ms = 0;
 static bool s_has_unset_mac = false;
 static const uint32_t UNPAIRED_MAC_TTL_MS = 8000;
 
+static const char* pkt_type_str(uint8_t t) {
+    switch (t) {
+        case RSN_PKT_HELLO: return "HELLO";
+        case RSN_PKT_TELEMETRY: return "TELEM";
+        case RSN_PKT_CONFIG_ACK: return "CFG_ACK";
+        case RSN_PKT_CONFIG: return "CFG";
+        case RSN_PKT_HANDSHAKE: return "HS";
+        default: return "UNK";
+    }
+}
+
+static void log_mac(const char* prefix, const uint8_t* mac) {
+    if (!mac) return;
+    Serial.printf("%s %02X:%02X:%02X:%02X:%02X:%02X\n", prefix,
+                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+}
+
 static bool mac_is_unknown(const uint8_t* mac) {
     if (!mac) return true;
     bool all_ff = true;
@@ -86,8 +103,14 @@ static void on_send(const uint8_t*, esp_now_send_status_t) {
 }
 
 static void on_recv(const uint8_t* mac, const uint8_t* data, int len) {
-    if (!data || len <= 0 || len > RSN_MAX_PACKET_SIZE) return;
-    if (len < static_cast<int>(sizeof(rsn_header_t))) return;
+    if (!data || len <= 0 || len > RSN_MAX_PACKET_SIZE) {
+        Serial.printf("[TGW] RX invalid len=%d\n", len);
+        return;
+    }
+    if (len < static_cast<int>(sizeof(rsn_header_t))) {
+        Serial.println("[TGW] RX too short for header");
+        return;
+    }
 
     tgw_rx_entry_t entry = {};
     memcpy(entry.data, data, len);
@@ -127,6 +150,12 @@ static void on_recv(const uint8_t* mac, const uint8_t* data, int len) {
         }
     }
 
+    if (mac) {
+        Serial.printf("[TGW] RX type=%s(0x%02X) node=%u len=%d rssi=%d mac=%02X:%02X:%02X:%02X:%02X:%02X\n",
+                      pkt_type_str(hdr ? hdr->type : 0), hdr ? hdr->type : 0, entry.node_id, len, entry.rssi,
+                      mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    }
+
     tgw_proto_push(entry);
 }
 
@@ -134,7 +163,11 @@ void tgw_proto_init() {
     memset(s_nodes, 0, sizeof(s_nodes));
     WiFi.mode(WIFI_STA);
     WiFi.disconnect(true);
-    esp_now_init();
+    esp_err_t err = esp_now_init();
+    if (err != ESP_OK) {
+        Serial.printf("[TGW] esp_now_init failed err=%d\n", (int)err);
+        return;
+    }
     esp_now_register_send_cb(on_send);
     esp_now_register_recv_cb(on_recv);
 }
@@ -165,10 +198,23 @@ bool tgw_proto_send_to_node(uint8_t node_id, const void* data, size_t len) {
     peer.encrypt = false;
 
     if (!esp_now_is_peer_exist(peer.peer_addr)) {
-        esp_now_add_peer(&peer);
+        esp_err_t perr = esp_now_add_peer(&peer);
+        if (perr != ESP_OK) {
+            Serial.printf("[TGW] add_peer failed err=%d mac=%02X:%02X:%02X:%02X:%02X:%02X\n",
+                          (int)perr, dest_mac[0], dest_mac[1], dest_mac[2],
+                          dest_mac[3], dest_mac[4], dest_mac[5]);
+        }
     }
 
-    const bool sent = (esp_now_send(dest_mac, reinterpret_cast<const uint8_t*>(data), len) == ESP_OK);
+    Serial.printf("[TGW] TX node=%u len=%u mac=%02X:%02X:%02X:%02X:%02X:%02X\n",
+                  node_id, (unsigned)len,
+                  dest_mac[0], dest_mac[1], dest_mac[2],
+                  dest_mac[3], dest_mac[4], dest_mac[5]);
+    esp_err_t serr = esp_now_send(dest_mac, reinterpret_cast<const uint8_t*>(data), len);
+    const bool sent = (serr == ESP_OK);
+    if (!sent) {
+        Serial.printf("[TGW] esp_now_send failed err=%d\n", (int)serr);
+    }
     if (used_unpaired_mac && sent) {
         tgw_proto_set_node_mac(node_id, dest_mac);
         s_has_unset_mac = false;

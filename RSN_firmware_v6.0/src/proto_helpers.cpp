@@ -22,10 +22,12 @@ static volatile LastPacket s_last_pkt = {false, RSN_PKT_HELLO, 0};
 
 static void on_send(const uint8_t*, esp_now_send_status_t status) {
     s_last_send_ok = (status == ESP_NOW_SEND_SUCCESS);
+    Serial.printf("[RSN] on_send status=%d\n", (int)status);
 }
 
 static void on_recv(const uint8_t* mac, const uint8_t* data, int len) {
     if (len <= 0 || len > RSN_MAX_PACKET_SIZE) {
+        Serial.printf("[RSN] on_recv invalid len=%d\n", len);
         return;
     }
 
@@ -38,6 +40,10 @@ static void on_recv(const uint8_t* mac, const uint8_t* data, int len) {
     s_last_pkt.len        = len;
     s_last_pkt.has_packet = true;
     s_last_pkt.type       = static_cast<rsn_packet_type_t>(g_rx_buffer[0]);
+    Serial.printf("[RSN] RX type=0x%02X len=%d mac=%02X:%02X:%02X:%02X:%02X:%02X\n",
+                  s_last_pkt.type, len,
+                  s_peer_mac[0], s_peer_mac[1], s_peer_mac[2],
+                  s_peer_mac[3], s_peer_mac[4], s_peer_mac[5]);
 }
 
 static bool ensure_peer_added() {
@@ -57,8 +63,10 @@ void proto_init() {
     WiFi.mode(WIFI_STA);
     WiFi.disconnect(true);
 
-    s_proto_ready = (esp_now_init() == ESP_OK);
+    esp_err_t err = esp_now_init();
+    s_proto_ready = (err == ESP_OK);
     if (!s_proto_ready) {
+        Serial.printf("[RSN] esp_now_init failed err=%d\n", (int)err);
         return;
     }
 
@@ -85,13 +93,22 @@ static bool proto_send_packet(const void* payload, size_t len) {
         return false;
     }
 
+    const rsn_header_t* hdr = reinterpret_cast<const rsn_header_t*>(payload);
     memcpy(g_tx_buffer, payload, len);
     s_last_send_ok = false;
     ensure_peer_added(); // melhor esforço; se falhar ainda tentamos enviar (broadcast)
     const bool is_broadcast = (s_peer_mac[0] == 0xFF && s_peer_mac[1] == 0xFF && s_peer_mac[2] == 0xFF &&
                                s_peer_mac[3] == 0xFF && s_peer_mac[4] == 0xFF && s_peer_mac[5] == 0xFF);
     const uint8_t* dest = is_broadcast ? nullptr : s_peer_mac;
-    return esp_now_send(dest, g_tx_buffer, len) == ESP_OK;
+    Serial.printf("[RSN] TX type=0x%02X len=%u dest=%s%02X:%02X:%02X:%02X:%02X:%02X\n",
+                  hdr ? hdr->type : 0xFF, (unsigned)len, is_broadcast ? "(bcast)" : "",
+                  dest ? dest[0] : 0xFF, dest ? dest[1] : 0xFF, dest ? dest[2] : 0xFF,
+                  dest ? dest[3] : 0xFF, dest ? dest[4] : 0xFF, dest ? dest[5] : 0xFF);
+    esp_err_t err = esp_now_send(dest, g_tx_buffer, len);
+    if (err != ESP_OK) {
+        Serial.printf("[RSN] esp_now_send failed err=%d\n", (int)err);
+    }
+    return err == ESP_OK;
 }
 
 void proto_build_hello_packet(rsn_hello_packet_t* pkt) {
