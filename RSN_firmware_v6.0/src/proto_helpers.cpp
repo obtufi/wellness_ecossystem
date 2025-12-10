@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_now.h>
+#include <esp_wifi.h>
 #include <string.h>
 
 #include "proto_helpers.h"
@@ -9,6 +10,7 @@ static bool     s_proto_ready     = false;
 // Use TGW MAC known a priori; fallback to broadcast if you want auto-discovery.
 static const uint8_t s_tgw_mac[6] = {0xA8, 0x42, 0xE3, 0x4A, 0xA4, 0x24};
 static uint8_t  s_peer_mac[6]     = {0xA8, 0x42, 0xE3, 0x4A, 0xA4, 0x24};
+static uint8_t  s_espnow_channel  = 1;
 static volatile bool s_last_send_ok = false;
 
 static bool ensure_peer_added();
@@ -50,7 +52,7 @@ static void on_recv(const uint8_t* mac, const uint8_t* data, int len) {
 static bool ensure_peer_added() {
     esp_now_peer_info_t peer = {};
     memcpy(peer.peer_addr, s_peer_mac, sizeof(s_peer_mac));
-    peer.channel = 0;
+    peer.channel = s_espnow_channel;
     peer.encrypt = false;
 
     if (esp_now_is_peer_exist(peer.peer_addr)) {
@@ -63,6 +65,7 @@ static bool ensure_peer_added() {
 void proto_init() {
     WiFi.mode(WIFI_STA);
     WiFi.disconnect(true);
+    esp_wifi_set_channel(s_espnow_channel, WIFI_SECOND_CHAN_NONE);
 
     esp_err_t err = esp_now_init();
     s_proto_ready = (err == ESP_OK);
@@ -70,6 +73,9 @@ void proto_init() {
         Serial.printf("[RSN] esp_now_init failed err=%d\n", (int)err);
         return;
     }
+    Serial.printf("[RSN] WiFi channel=%u MAC=%s%02X:%02X:%02X:%02X:%02X:%02X\n",
+                  s_espnow_channel, "", s_peer_mac[0], s_peer_mac[1], s_peer_mac[2],
+                  s_peer_mac[3], s_peer_mac[4], s_peer_mac[5]);
 
     esp_now_register_send_cb(on_send);
     esp_now_register_recv_cb(on_recv);

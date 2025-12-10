@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_now.h>
+#include <esp_wifi.h>
 #include <string.h>
 
 #include "tgw_proto.h"
@@ -24,6 +25,7 @@ static uint8_t s_last_unset_mac[6] = {};
 static uint32_t s_last_unset_ms = 0;
 static bool s_has_unset_mac = false;
 static const uint32_t UNPAIRED_MAC_TTL_MS = 8000;
+static uint8_t s_espnow_channel = 1;
 
 static const char* pkt_type_str(uint8_t t) {
     switch (t) {
@@ -163,6 +165,7 @@ void tgw_proto_init() {
     memset(s_nodes, 0, sizeof(s_nodes));
     WiFi.mode(WIFI_STA);
     WiFi.disconnect(true);
+    esp_wifi_set_channel(s_espnow_channel, WIFI_SECOND_CHAN_NONE);
     esp_err_t err = esp_now_init();
     if (err != ESP_OK) {
         Serial.printf("[TGW] esp_now_init failed err=%d\n", (int)err);
@@ -170,6 +173,10 @@ void tgw_proto_init() {
     }
     esp_now_register_send_cb(on_send);
     esp_now_register_recv_cb(on_recv);
+    uint8_t mac[6];
+    WiFi.macAddress(mac);
+    Serial.printf("[TGW] WiFi channel=%u MAC=%02X:%02X:%02X:%02X:%02X:%02X\n",
+                  s_espnow_channel, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
 
 bool tgw_proto_send_to_node(uint8_t node_id, const void* data, size_t len) {
@@ -194,7 +201,7 @@ bool tgw_proto_send_to_node(uint8_t node_id, const void* data, size_t len) {
 
     esp_now_peer_info_t peer = {};
     memcpy(peer.peer_addr, dest_mac, 6);
-    peer.channel = 0;
+    peer.channel = s_espnow_channel;
     peer.encrypt = false;
 
     if (!esp_now_is_peer_exist(peer.peer_addr)) {
