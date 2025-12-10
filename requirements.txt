@@ -1,0 +1,5 @@
+pyserial>=3.5,<4
+numpy>=1.26,<2
+pyqtgraph>=0.13,<0.14
+PySide6>=6.7,<6.8
+structlog>=24.1,<25
