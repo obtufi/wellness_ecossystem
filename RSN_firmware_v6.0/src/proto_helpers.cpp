@@ -54,18 +54,25 @@ static bool ensure_peer_added() {
     memcpy(peer.peer_addr, s_peer_mac, sizeof(s_peer_mac));
     peer.channel = s_espnow_channel;
     peer.encrypt = false;
+    peer.ifidx = WIFI_IF_STA;
 
     if (esp_now_is_peer_exist(peer.peer_addr)) {
         return true;
     }
 
-    return esp_now_add_peer(&peer) == ESP_OK;
+    esp_err_t err = esp_now_add_peer(&peer);
+    if (err != ESP_OK) {
+        Serial.printf("[RSN] add_peer failed err=%d\n", (int)err);
+    }
+    return err == ESP_OK;
 }
 
 void proto_init() {
     WiFi.mode(WIFI_STA);
     WiFi.disconnect(true);
     esp_wifi_set_channel(s_espnow_channel, WIFI_SECOND_CHAN_NONE);
+    uint8_t mac[6];
+    esp_wifi_get_mac(WIFI_IF_STA, mac);
 
     esp_err_t err = esp_now_init();
     s_proto_ready = (err == ESP_OK);
@@ -73,8 +80,10 @@ void proto_init() {
         Serial.printf("[RSN] esp_now_init failed err=%d\n", (int)err);
         return;
     }
-    Serial.printf("[RSN] WiFi channel=%u MAC=%s%02X:%02X:%02X:%02X:%02X:%02X\n",
-                  s_espnow_channel, "", s_peer_mac[0], s_peer_mac[1], s_peer_mac[2],
+    Serial.printf("[RSN] WiFi channel=%u MAC=%02X:%02X:%02X:%02X:%02X:%02X peer=%02X:%02X:%02X:%02X:%02X:%02X\n",
+                  s_espnow_channel,
+                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
+                  s_peer_mac[0], s_peer_mac[1], s_peer_mac[2],
                   s_peer_mac[3], s_peer_mac[4], s_peer_mac[5]);
 
     esp_now_register_send_cb(on_send);

@@ -203,6 +203,7 @@ bool tgw_proto_send_to_node(uint8_t node_id, const void* data, size_t len) {
     memcpy(peer.peer_addr, dest_mac, 6);
     peer.channel = s_espnow_channel;
     peer.encrypt = false;
+    peer.ifidx = WIFI_IF_STA;
 
     if (!esp_now_is_peer_exist(peer.peer_addr)) {
         esp_err_t perr = esp_now_add_peer(&peer);
